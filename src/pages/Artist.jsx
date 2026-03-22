@@ -5,27 +5,6 @@ import { motion } from 'framer-motion'
 import SkeletonCard from '../components/SkeletonCard'
 import { usePlayerContext } from '../PlayerContext'
 
-async function resolveArtistId(id) {
-  const isNumeric = /^\d+$/.test(id)
-
-  if (!isNumeric) {
-    const decodedName = decodeURIComponent(id)
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(decodedName)}&entity=musicArtist&limit=1`)
-    const data = await res.json()
-    const found = data?.results?.[0]
-    return found ? String(found.artistId) : null
-  }
-
-  // Numeric — verify by getting artist name then re-searching
-  const checkRes = await fetch(`https://itunes.apple.com/lookup?id=${id}&entity=song&limit=1`).then(r => r.json())
-  const artistName = checkRes?.results?.find(r => r.wrapperType === 'track')?.artistName
-  if (!artistName) return id
-
-  const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=musicArtist&limit=1`).then(r => r.json())
-  const found = searchRes?.results?.[0]
-  return found ? String(found.artistId) : id
-}
-
 async function getArtistData(artistId) {
   const [tracksRes, albumsRes] = await Promise.all([
     fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=song&limit=10`).then(r => r.json()),
@@ -45,8 +24,25 @@ async function getArtistData(artistId) {
     })).filter(t => t.image)
 
   const albums = (albumsRes?.results || []).filter(r => r.wrapperType === 'collection')
-
   return { tracks, albums }
+}
+
+async function findArtistByName(name) {
+  // Search with higher limit and find exact or closest name match
+  const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=10`)
+  const data = await res.json()
+  const results = data?.results || []
+
+  // Try exact match first (case insensitive)
+  const exact = results.find(a => a.artistName.toLowerCase() === name.toLowerCase())
+  if (exact) return String(exact.artistId)
+
+  // Try starts-with match
+  const startsWith = results.find(a => a.artistName.toLowerCase().startsWith(name.toLowerCase()))
+  if (startsWith) return String(startsWith.artistId)
+
+  // Fall back to first result
+  return results[0] ? String(results[0].artistId) : null
 }
 
 function Artist() {
@@ -63,13 +59,25 @@ function Artist() {
 
     const load = async () => {
       try {
-        const resolvedId = await resolveArtistId(id)
-        if (!resolvedId || cancelled) { if (!cancelled) setLoading(false); return }
+        const decodedId = decodeURIComponent(id)
+        const isNumeric = /^\d+$/.test(decodedId)
 
-        const { tracks: t, albums: a } = await getArtistData(resolvedId)
+        let artistId
+
+        if (!isNumeric) {
+          // It's a name — search by name with exact matching
+          artistId = await findArtistByName(decodedId)
+        } else {
+          // Numeric ID — use directly
+          artistId = decodedId
+        }
+
+        if (!artistId || cancelled) { if (!cancelled) setLoading(false); return }
+
+        const { tracks: t, albums: a } = await getArtistData(artistId)
         if (cancelled) return
 
-        const name = t[0]?.artistName || a[0]?.artistName || ''
+        const name = t[0]?.artistName || a[0]?.artistName || decodedId
         setArtistName(name)
         setTracks(t)
         setAlbums(a)

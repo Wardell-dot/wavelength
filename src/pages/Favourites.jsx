@@ -55,7 +55,7 @@ function Favourites() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
               >
-                <div className="fav-card-art-wrap" onClick={() => item.artistId && navigate(`/artist/${item.artistId}`)}>
+                <div className="fav-card-art-wrap" onClick={() => item.artistName && navigate(`/artist/${encodeURIComponent(item.artistName)}`)}>
                   {item.image
                     ? <img src={item.image} alt={item.name} className="track-card-art" />
                     : <div className="track-card-no-art">♪</div>}
@@ -79,7 +79,7 @@ function Favourites() {
                 </div>
                 <div className="track-card-info">
                   <p className="track-card-name">{item.name}</p>
-                  <p className="track-card-artist" style={{ cursor: 'pointer' }} onClick={() => item.artistId && navigate(`/artist/${item.artistId}`)}>
+                  <p className="track-card-artist" style={{ cursor: 'pointer' }} onClick={() => item.artistName && navigate(`/artist/${encodeURIComponent(item.artistName)}`)}>
                     {item.artistName}
                   </p>
                   <button className="fav-remove-btn" onClick={() => remove(item.id)}>Remove</button>

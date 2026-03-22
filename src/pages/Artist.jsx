@@ -4,7 +4,50 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import SkeletonCard from '../components/SkeletonCard'
 import { usePlayerContext } from '../PlayerContext'
-import { getArtistInfo, getArtistTopTracks } from '../spotify'
+
+async function resolveArtistId(id) {
+  const isNumeric = /^\d+$/.test(id)
+
+  if (!isNumeric) {
+    const decodedName = decodeURIComponent(id)
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(decodedName)}&entity=musicArtist&limit=1`)
+    const data = await res.json()
+    const found = data?.results?.[0]
+    return found ? String(found.artistId) : null
+  }
+
+  // Numeric — verify by getting artist name then re-searching
+  const checkRes = await fetch(`https://itunes.apple.com/lookup?id=${id}&entity=song&limit=1`).then(r => r.json())
+  const artistName = checkRes?.results?.find(r => r.wrapperType === 'track')?.artistName
+  if (!artistName) return id
+
+  const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&entity=musicArtist&limit=1`).then(r => r.json())
+  const found = searchRes?.results?.[0]
+  return found ? String(found.artistId) : id
+}
+
+async function getArtistData(artistId) {
+  const [tracksRes, albumsRes] = await Promise.all([
+    fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=song&limit=10`).then(r => r.json()),
+    fetch(`https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=8`).then(r => r.json()),
+  ])
+
+  const tracks = (tracksRes?.results || [])
+    .filter(r => r.wrapperType === 'track')
+    .map(t => ({
+      id: String(t.trackId),
+      name: t.trackName,
+      artistName: t.artistName,
+      image: t.artworkUrl100?.replace('100x100', '400x400'),
+      previewUrl: t.previewUrl || null,
+      album: t.collectionName,
+      duration: t.trackTimeMillis,
+    })).filter(t => t.image)
+
+  const albums = (albumsRes?.results || []).filter(r => r.wrapperType === 'collection')
+
+  return { tracks, albums }
+}
 
 function Artist() {
   const { id } = useParams()
@@ -17,20 +60,26 @@ function Artist() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([getArtistInfo(id), getArtistTopTracks(id, 10)])
-      .then(([info, topTracks]) => {
+
+    const load = async () => {
+      try {
+        const resolvedId = await resolveArtistId(id)
+        if (!resolvedId || cancelled) { if (!cancelled) setLoading(false); return }
+
+        const { tracks: t, albums: a } = await getArtistData(resolvedId)
         if (cancelled) return
-        // artistName comes from the track results or album artist
-        const name = topTracks[0]?.artistName
-          || info.albums[0]?.artistName
-          || info.artist?.artistName
-          || ''
+
+        const name = t[0]?.artistName || a[0]?.artistName || ''
         setArtistName(name)
-        setAlbums(info.albums)
-        setTracks(topTracks)
+        setTracks(t)
+        setAlbums(a)
         setLoading(false)
-      })
-      .catch(() => { if (!cancelled) setLoading(false) })
+      } catch {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
     return () => { cancelled = true }
   }, [id])
 

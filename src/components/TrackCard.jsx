@@ -63,7 +63,7 @@ function TrackCard({ track, index, onPlay, currentTrack, isPlaying }) {
       transition={{ duration: 0.3, delay: index * 0.03 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => track.artistId && navigate(`/artist/${track.artistId}`)}
+      onClick={() => track.artistName && navigate(`/artist/${encodeURIComponent(track.artistName)}`)}
     >
       <div className="track-card-art-wrap">
         {track.image
